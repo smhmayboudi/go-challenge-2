@@ -10,20 +10,19 @@ import (
 var (
 	cache    int
 	cacheMTX sync.Mutex
-	expTime  = time.NewTicker(5 * time.Second)
+	expTime  time.Time
 )
 
 func server() int {
-	select {
-	case <-expTime.C:
-		cacheMTX.Lock()
+	cacheMTX.Lock()
+	defer cacheMTX.Unlock()
+
+	if time.Now().After(expTime) {
 		cache = DownStream()
-		cacheMTX.Unlock()
-		expTime.Reset(5 * time.Second)
-		return cache
-	default:
-		return cache
+		expTime = time.Now().Add(5 * time.Second)
 	}
+
+	return cache
 }
 
 func DownStream() int {
@@ -34,12 +33,15 @@ func DownStream() int {
 }
 
 func main() {
+	var wg sync.WaitGroup
 	count := 200
 	for i := 0; i < count; i++ {
+		wg.Add(1)
 		go func(i int) {
+			defer wg.Done()
 			time.Sleep(time.Duration(rand.Intn(20)) * time.Second)
 			fmt.Printf("%3d %3d\n", i, server())
 		}(i)
 	}
-	time.Sleep(5 * time.Minute)
+	wg.Wait()
 }

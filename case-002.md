@@ -1,4 +1,4 @@
-# Problem 001
+# Problem 002
 
 ```GO
 package main
@@ -13,20 +13,19 @@ import (
 var (
 	cache    int
 	cacheMTX sync.Mutex
-	expTime  = time.NewTicker(5 * time.Second)
+	expTime  time.Time
 )
 
 func server() int {
-	select {
-	case <-expTime.C:
+	if time.Now().After(expTime) {
 		cacheMTX.Lock()
-		cache = DownStream()
+		if time.Now().After(expTime) {
+			cache = DownStream()
+			expTime = time.Now().Add(5 * time.Second)
+		}
 		cacheMTX.Unlock()
-		expTime.Reset(5 * time.Second)
-		return cache
-	default:
-		return cache
 	}
+	return cache
 }
 
 func DownStream() int {
@@ -52,18 +51,10 @@ Sample RUN:
 
 ```SHELL
 down stream started.
-104  77
- 69  77
- 62  77
- 44  77
-176  77
-  5  77
- 35  77
-157  77
 down stream called.
 ```
 
-# Solution 001
+# Solution 002
 
 ```GO
 package main
@@ -78,18 +69,16 @@ import (
 var (
 	cache    int
 	cacheMTX sync.Mutex
-	expTimer *time.Ticker
+	expTime  time.Time
 )
 
 func server() int {
 	cacheMTX.Lock()
 	defer cacheMTX.Unlock()
 
-	select {
-	case <-expTimer.C:
+	if time.Now().After(expTime) {
 		cache = DownStream()
-	default:
-		Use the cached value
+		expTime = time.Now().Add(5 * time.Second)
 	}
 
 	return cache
@@ -103,9 +92,6 @@ func DownStream() int {
 }
 
 func main() {
-	expTimer = time.NewTicker(5 * time.Second)
-	defer expTimer.Stop()
-
 	var wg sync.WaitGroup
 	count := 200
 	for i := 0; i < count; i++ {

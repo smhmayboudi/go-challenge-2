@@ -127,3 +127,115 @@ func main() {
 	wg.Wait()
 }
 ```
+
+# Solution 2
+
+```GO
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"sync"
+	"time"
+)
+
+var (
+	cache    int
+	cacheMTX sync.Mutex
+	expTime  time.Time
+)
+
+func server() int {
+	if time.Now().After(expTime) {
+		cacheMTX.Lock()
+		if time.Now().After(expTime) {
+			cache = DownStream()
+			expTime = time.Now().Add(5 * time.Second)
+		}
+		cacheMTX.Unlock()
+	}
+	return cache
+}
+
+func DownStream() int {
+	fmt.Println("down stream started.")
+	time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
+	fmt.Println("down stream called.")
+	return rand.Intn(100)
+}
+
+func main() {
+	count := 200
+	for i := 0; i < count; i++ {
+		go func(i int) {
+			time.Sleep(time.Duration(rand.Intn(20)) * time.Second)
+			fmt.Printf("%3d %3d\n", i, server())
+		}(i)
+	}
+	time.Sleep(5 * time.Minute)
+}
+```
+
+The main issue with the provided code is the way the cache invalidation logic is implemented. The code has a race condition that can lead to incorrect cache updates.
+
+Here's the breakdown of the problem:
+
+Race condition in cache update: The server() function checks the expTime and updates the cache only if the current time is after the expTime. However, this check is not atomic, and there is a race condition between the time when the check is performed and the time when the cache is updated. Consider the following scenario:
+Multiple goroutines call the server() function concurrently.
+One of the goroutines checks the expTime and finds that it has expired.
+Before that goroutine can acquire the cacheMTX lock and update the cache, another goroutine may have already updated the cache.
+The first goroutine then proceeds to update the cache, overwriting the value set by the other goroutine.
+Inefficient cache invalidation: The cache invalidation logic is implemented within the server() function, but it is not being triggered correctly. The code checks the expTime on every call to the server() function, which can be inefficient if the cache is accessed frequently.
+Incorrect goroutine creation: The main() function creates 200 goroutines, each of which calls the server() function. However, the server() function does not have any mechanism to handle concurrent requests. This could lead to race conditions and incorrect cache updates.
+Here's a corrected version of the code that addresses these issues:
+
+```GO
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"sync"
+	"time"
+)
+
+var (
+	cache    int
+	cacheMTX sync.Mutex
+	expTime  time.Time
+)
+
+func server() int {
+	cacheMTX.Lock()
+	defer cacheMTX.Unlock()
+
+	if time.Now().After(expTime) {
+		cache = DownStream()
+		expTime = time.Now().Add(5 * time.Second)
+	}
+
+	return cache
+}
+
+func DownStream() int {
+	fmt.Println("down stream started.")
+	time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
+	fmt.Println("down stream called.")
+	return rand.Intn(100)
+}
+
+func main() {
+	var wg sync.WaitGroup
+	count := 200
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			time.Sleep(time.Duration(rand.Intn(20)) * time.Second)
+			fmt.Printf("%3d %3d\n", i, server())
+		}(i)
+	}
+	wg.Wait()
+}
+```
