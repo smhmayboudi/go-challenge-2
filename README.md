@@ -67,11 +67,14 @@ func main() {
 
 The issue with the provided code is related to the use of time.Ticker and the way the cache invalidation logic is implemented.
 
-Incorrect usage of time.Ticker: The expTime variable is declared as a time.Ticker, but it is not being properly used to manage the cache expiration. The time.Ticker should be used to trigger the cache invalidation at the correct intervals, but in the current implementation, it is not being reset or stopped when the program exits.
-Potential race conditions: The code uses a sync.Mutex to protect the cache variable, but the locking and unlocking are not done correctly. The cacheMTX.Lock() and cacheMTX.Unlock() calls should be placed around the entire block of code that accesses the cache variable, not just the DownStream() call.
-Inefficient cache invalidation: The cache invalidation logic is implemented within the server() function, but it is not being triggered correctly. The select statement should be checking the expTime.C channel for new ticks, but instead, it is only checking the default case, which means the cache will never be invalidated.
-Incorrect goroutine creation: The main() function creates 200 goroutines, each of which calls the server() function. However, the server() function does not have any mechanism to handle concurrent requests. This could lead to race conditions and incorrect cache updates.
-Here's a corrected version of the code that addresses these issues:
+1. Incorrect usage of time.Ticker: The expTime variable is declared as a time.Ticker, but it is not being properly used to manage the cache expiration. The time.Ticker should be used to trigger the cache invalidation at the correct intervals, but in the current implementation, it is not being reset or stopped when the program exits.
+
+2. Potential race conditions: The code uses a sync.Mutex to protect the cache variable, but the locking and unlocking are not done correctly. The cacheMTX.Lock() and cacheMTX.Unlock() calls should be placed around the entire block of code that accesses the cache variable, not just the DownStream() call.
+
+3. Inefficient cache invalidation: The cache invalidation logic is implemented within the server() function, but it is not being triggered correctly. The select statement should be checking the expTime.C channel for new ticks, but instead, it is only checking the default case, which means the cache will never be invalidated.
+
+4. Incorrect goroutine creation: The main() function creates 200 goroutines, each of which calls the server() function. However, the server() function does not have any mechanism to handle concurrent requests. This could lead to race conditions and incorrect cache updates.
+   Here's a corrected version of the code that addresses these issues:
 
 ```GO
 package main
@@ -181,14 +184,17 @@ The main issue with the provided code is the way the cache invalidation logic is
 
 Here's the breakdown of the problem:
 
-Race condition in cache update: The server() function checks the expTime and updates the cache only if the current time is after the expTime. However, this check is not atomic, and there is a race condition between the time when the check is performed and the time when the cache is updated. Consider the following scenario:
-Multiple goroutines call the server() function concurrently.
-One of the goroutines checks the expTime and finds that it has expired.
-Before that goroutine can acquire the cacheMTX lock and update the cache, another goroutine may have already updated the cache.
-The first goroutine then proceeds to update the cache, overwriting the value set by the other goroutine.
-Inefficient cache invalidation: The cache invalidation logic is implemented within the server() function, but it is not being triggered correctly. The code checks the expTime on every call to the server() function, which can be inefficient if the cache is accessed frequently.
-Incorrect goroutine creation: The main() function creates 200 goroutines, each of which calls the server() function. However, the server() function does not have any mechanism to handle concurrent requests. This could lead to race conditions and incorrect cache updates.
-Here's a corrected version of the code that addresses these issues:
+1. Race condition in cache update: The server() function checks the expTime and updates the cache only if the current time is after the expTime. However, this check is not atomic, and there is a race condition between the time when the check is performed and the time when the cache is updated. Consider the following scenario:
+
+- Multiple goroutines call the server() function concurrently.
+- One of the goroutines checks the expTime and finds that it has expired.
+- Before that goroutine can acquire the cacheMTX lock and update the cache, another goroutine may have already updated the cache.
+- The first goroutine then proceeds to update the cache, overwriting the value set by the other goroutine.
+
+2. Inefficient cache invalidation: The cache invalidation logic is implemented within the server() function, but it is not being triggered correctly. The code checks the expTime on every call to the server() function, which can be inefficient if the cache is accessed frequently.
+
+3. Incorrect goroutine creation: The main() function creates 200 goroutines, each of which calls the server() function. However, the server() function does not have any mechanism to handle concurrent requests. This could lead to race conditions and incorrect cache updates.
+   Here's a corrected version of the code that addresses these issues:
 
 ```GO
 package main
